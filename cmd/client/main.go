@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/Ultimace1314/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/Ultimace1314/learn-pub-sub-starter/internal/pubsub"
@@ -13,33 +12,32 @@ import (
 
 func main() {
 	fmt.Println("Starting Peril client...")
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	const rabbitConnString = "amqp://guest:guest@localhost:5672/"
+
+	conn, err := amqp.Dial(rabbitConnString)
 	if err != nil {
-		fmt.Println("Failed to connect to RabbitMQ")
-		os.Exit(1)
+		log.Fatalf("could not connect to RabbitMQ: %v", err)
 	}
 	defer conn.Close()
-	fmt.Println("Peril game server connected to RabbitMQ!")
+	fmt.Println("Peril game client connected to RabbitMQ!")
 
 	username, err := gamelogic.ClientWelcome()
 	if err != nil {
-		fmt.Println("Failed to get username")
-		os.Exit(1)
+		log.Fatalf("could not get username: %v", err)
 	}
+	gs := gamelogic.NewGameState(username)
 
-	_, queue, err := pubsub.DeclareAndBind(
+	err = pubsub.SubscribeJSON(
 		conn,
 		routing.ExchangePerilDirect,
-		routing.PauseKey+"."+username,
+		routing.PauseKey+"."+gs.GetUsername(),
 		routing.PauseKey,
 		pubsub.SimpleQueueTransient,
+		handlerPause(gs),
 	)
 	if err != nil {
 		log.Fatalf("could not subscribe to pause: %v", err)
 	}
-	fmt.Printf("Queue %v declared and bound!\n", queue.Name)
-
-	gs := gamelogic.NewGameState(username)
 
 	for {
 		words := gamelogic.GetInput()
